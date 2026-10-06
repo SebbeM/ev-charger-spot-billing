@@ -45,6 +45,9 @@ function buildDetailedReport(agg, label, cfg) {
     ];
   });
 
+  // Keep first/last session as plain text so Sheets does not parse some of
+  // them into dates and leave others as strings.
+  if (rows.length) sheet.getRange(5, 10, rows.length, 2).setNumberFormat('@');
   writeRows(sheet, 5, rows, 10, flagged);
   if (rows.length) {
     sheet.getRange(5, 4, rows.length, 1).setFontWeight('bold').setFontColor(COLOR_ENERGY);
@@ -52,6 +55,13 @@ function buildDetailedReport(agg, label, cfg) {
   }
 
   writeTotals(sheet, rows.length + 5, NCOL, [3, 4, 6, 7, 9], 5);
+
+  // Explicit number formats for data and totals rows; otherwise Sheets may
+  // infer a date format (0 shows as 1899-12-30).
+  var formats = { 3: '0', 4: '0.000', 5: '0.000', 6: '0.0', 7: '0.00', 8: '0.0', 9: '0.000' };
+  Object.keys(formats).forEach(function(col) {
+    sheet.getRange(5, Number(col), rows.length + 1, 1).setNumberFormat(formats[col]);
+  });
   setColumnWidths(sheet, [150, 260, 80, 100, 120, 70, 110, 120, 110, 140, 140]);
 }
 
