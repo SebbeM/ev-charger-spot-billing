@@ -11,7 +11,7 @@ function runDebug(token, fromMs, toMs) {
 
   var session = sessions.reduce(function(a, b) { return durationMs(b) > durationMs(a) ? b : a; });
   var range   = sessionTimeRange([session], session.start, session.end);
-  var prices  = fetchNordpoolPrices(range.from, range.to);
+  var prices  = fetchSpotPrices(range.from, range.to);
   var p       = priceSession(session, prices.spotMap, cfg);
 
   var sheet = resetSheet(DEBUG_SHEET);

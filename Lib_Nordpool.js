@@ -1,51 +1,55 @@
 // ── Nord Pool day-ahead prices (15-minute resolution) ─────────────────────────
-// Note: dataportal-api.nordpoolgroup.com is Nord Pool's public data portal API.
-// It is not formally documented and may change, so missing days are detected
-// and reported instead of being ignored.
+// dataportal-api.nordpoolgroup.com is Nord Pool's public data portal API. It is
+// not formally documented, and days older than roughly two months return
+// HTTP 401 (history requires a paid subscription). Lib_Prices.gs handles that
+// by keeping an archive and falling back to elprisetjustnu.se.
 
 var NORDPOOL_BATCH_SIZE = 40; // parallel requests per batch
 
-// Fetches all prices for the Stockholm days overlapping [fromMs, toMs).
-// Returns { spotMap: {quarterKeyMs: öre/kWh}, missingDays: ['yyyy-MM-dd', ...], count }.
-function fetchNordpoolPrices(fromMs, toMs) {
-  var days        = stockholmDays(fromMs, toMs);
-  var spotMap     = {};
-  var missingDays = [];
-
-  for (var b = 0; b < days.length; b += NORDPOOL_BATCH_SIZE) {
-    var batch    = days.slice(b, b + NORDPOOL_BATCH_SIZE);
-    var requests = batch.map(function(day) {
-      return {
-        url: 'https://dataportal-api.nordpoolgroup.com/api/DayAheadPrices'
-           + '?date=' + day + '&market=DayAhead'
-           + '&deliveryArea=' + NORDPOOL_AREA + '&currency=' + CURRENCY,
-        muteHttpExceptions: true
-      };
+// Fetches the given Stockholm days ('yyyy-MM-dd').
+// Returns { day: { quarterKeyMs: öre/kWh, ... } } for days that returned data.
+function fetchNordpoolDays(days) {
+  return fetchDaysInBatches(days, NORDPOOL_BATCH_SIZE, function(day) {
+    return 'https://dataportal-api.nordpoolgroup.com/api/DayAheadPrices'
+         + '?date=' + day + '&market=DayAhead'
+         + '&deliveryArea=' + NORDPOOL_AREA + '&currency=' + CURRENCY;
+  }, function(body) {
+    var prices = {};
+    (body.multiAreaEntries || []).forEach(function(e) {
+      var perMWh = (e.entryPerArea && e.entryPerArea[NORDPOOL_AREA] != null)
+                 ? e.entryPerArea[NORDPOOL_AREA] : null;
+      var start  = parseUtc(e.deliveryStart);
+      if (perMWh == null || isNaN(start)) return;
+      prices[quarterKey(start)] = perMWh / 10; // SEK/MWh → öre/kWh
     });
+    return prices;
+  }, 'Nord Pool');
+}
 
+// Shared by the price sources: fetches one URL per day in parallel batches,
+// parses each JSON body, and keeps the days that produced at least one price.
+function fetchDaysInBatches(days, batchSize, urlForDay, parseBody, sourceName) {
+  var result = {};
+  for (var b = 0; b < days.length; b += batchSize) {
+    var batch    = days.slice(b, b + batchSize);
+    var requests = batch.map(function(day) {
+      return { url: urlForDay(day), muteHttpExceptions: true };
+    });
     UrlFetchApp.fetchAll(requests).forEach(function(res, i) {
-      var found = 0;
-      if (res.getResponseCode() === 200) {
-        try {
-          (JSON.parse(res.getContentText()).multiAreaEntries || []).forEach(function(e) {
-            var perMWh = (e.entryPerArea && e.entryPerArea[NORDPOOL_AREA] != null)
-                       ? e.entryPerArea[NORDPOOL_AREA] : null;
-            var start  = parseUtc(e.deliveryStart);
-            if (perMWh == null || isNaN(start)) return;
-            spotMap[quarterKey(start)] = perMWh / 10; // SEK/MWh → öre/kWh
-            found++;
-          });
-        } catch (err) {
-          Logger.log('Nord Pool parse error ' + batch[i] + ': ' + err);
-        }
-      } else {
-        Logger.log('Nord Pool HTTP ' + res.getResponseCode() + ' for ' + batch[i]);
+      var day = batch[i];
+      if (res.getResponseCode() !== 200) {
+        Logger.log(sourceName + ' HTTP ' + res.getResponseCode() + ' for ' + day);
+        return;
       }
-      if (found === 0) missingDays.push(batch[i]);
+      try {
+        var prices = parseBody(JSON.parse(res.getContentText()));
+        if (Object.keys(prices).length) result[day] = prices;
+      } catch (err) {
+        Logger.log(sourceName + ' parse error ' + day + ': ' + err);
+      }
     });
   }
-
-  return { spotMap: spotMap, missingDays: missingDays, count: Object.keys(spotMap).length };
+  return result;
 }
 
 // Raw spot price (öre/kWh excl. VAT) for the quarter containing ms, or null.
