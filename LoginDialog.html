@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 13px; color: #1F2937; margin: 0; padding: 4px 4px 0; }
+    label { display: block; font-weight: bold; margin: 12px 0 4px; }
+    input { width: 100%; box-sizing: border-box; padding: 7px 8px; font-size: 13px;
+            border: 1px solid #CBD5E1; border-radius: 4px; }
+    input:focus { outline: none; border-color: #1A56DB; }
+    .row { display: flex; gap: 10px; }
+    .row > div { flex: 1; }
+    .hint { color: #6B7280; font-size: 11px; margin-top: 10px; }
+    .actions { margin-top: 18px; display: flex; gap: 8px; justify-content: flex-end; }
+    button { padding: 7px 16px; font-size: 13px; border-radius: 4px; cursor: pointer;
+             border: 1px solid #CBD5E1; background: #FFFFFF; }
+    button.primary { background: #1E3A5F; color: #FFFFFF; border-color: #1E3A5F; }
+    button:disabled { opacity: 0.6; cursor: default; }
+    #status { margin-top: 14px; white-space: pre-wrap; line-height: 1.45; }
+    #status.error { color: #B91C1C; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <form id="form">
+    <div id="period" class="hidden">
+      <div class="row">
+        <div>
+          <label for="fromDate">Startdatum</label>
+          <input type="date" id="fromDate">
+        </div>
+        <div>
+          <label for="toDate">Slutdatum (inklusive)</label>
+          <input type="date" id="toDate">
+        </div>
+      </div>
+    </div>
+
+    <label for="email">E-postadress till Zaptec Portal</label>
+    <input type="email" id="email" autocomplete="username" required>
+
+    <label for="password">Lösenord</label>
+    <input type="password" id="password" autocomplete="current-password" required>
+
+    <div class="hint">Lösenordet sparas inte. E-postadressen kommer ihåg till nästa gång.</div>
+
+    <div class="actions">
+      <button type="button" id="cancel">Avbryt</button>
+      <button type="submit" id="submit" class="primary">Hämta</button>
+    </div>
+  </form>
+
+  <div id="status"></div>
+  <div class="actions hidden" id="doneActions">
+    <button type="button" class="primary" id="close">Stäng</button>
+  </div>
+
+  <script>
+    var ctx = <?!= ctxJson ?>;
+    var el = function(id) { return document.getElementById(id); };
+
+    el('email').value = ctx.email || '';
+    if (ctx.custom) el('period').classList.remove('hidden');
+    (ctx.custom ? el('fromDate') : (ctx.email ? el('password') : el('email'))).focus();
+
+    el('cancel').onclick = function() { google.script.host.close(); };
+    el('close').onclick  = function() { google.script.host.close(); };
+
+    // Submitting the form also happens when pressing Enter in any field.
+    el('form').onsubmit = function(e) {
+      e.preventDefault();
+      setBusy(true);
+      setStatus('Hämtar data från Zaptec och Nord Pool. Det kan ta upp till en minut…', false);
+
+      google.script.run
+        .withSuccessHandler(function(message) {
+          el('form').classList.add('hidden');
+          el('doneActions').classList.remove('hidden');
+          setStatus(message, false);
+          el('close').focus();
+        })
+        .withFailureHandler(function(err) {
+          setBusy(false);
+          el('password').value = '';
+          setStatus(err && err.message ? err.message : String(err), true);
+        })
+        .handleLogin({
+          action:   ctx.action,
+          custom:   !!ctx.custom,
+          from:     ctx.from,
+          to:       ctx.to,
+          label:    ctx.label,
+          fromDate: el('fromDate').value,
+          toDate:   el('toDate').value,
+          email:    el('email').value,
+          password: el('password').value
+        });
+    };
+
+    function setBusy(busy) {
+      ['submit', 'cancel', 'email', 'password', 'fromDate', 'toDate'].forEach(function(id) {
+        el(id).disabled = busy;
+      });
+    }
+    function setStatus(text, isError) {
+      el('status').textContent = text;
+      el('status').className = isError ? 'error' : '';
+    }
+  </script>
+</body>
+</html>
