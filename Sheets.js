@@ -17,7 +17,7 @@ function buildSheets(token, fromMs, toMs, label) {
 
   var agg = aggregateSessions(sessions, prices.spotMap, cfg);
 
-  buildDetailedReport(agg, label, cfg);
+  buildDetailedReport(agg, label, cfg, averageSpotPrice(prices.spotMap, fromMs, toMs));
   buildSimplifiedReport(agg, label, cfg);
   buildSessionsSheet(agg, label, cfg);
   buildSpotPricesSheet(prices, fromMs, toMs, label, cfg);

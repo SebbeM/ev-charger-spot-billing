@@ -114,3 +114,13 @@ function priceSourceSummary(prices) {
   if (prices.dayCounts[SOURCE_ELPRIS])   parts.push(prices.dayCounts[SOURCE_ELPRIS] + ' från elprisetjustnu.se');
   return parts.length ? 'Spotpriser per dag: ' + parts.join(', ') + '.' : '';
 }
+
+// Plain average of all quarter prices in [fromMs, toMs), öre/kWh excl. VAT.
+// Returns null when there are no prices in the period.
+function averageSpotPrice(spotMap, fromMs, toMs) {
+  var sum = 0, n = 0;
+  Object.keys(spotMap).map(Number).forEach(function(k) {
+    if (k >= fromMs && k < toMs) { sum += spotMap[k]; n++; }
+  });
+  return n ? sum / n : null;
+}

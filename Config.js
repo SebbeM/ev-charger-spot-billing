@@ -7,21 +7,34 @@ function getConfig() {
   var sheet = ss.getSheetByName(CONFIG_SHEET);
   if (!sheet) { sheet = ss.insertSheet(CONFIG_SHEET); writeConfigSheet(sheet); }
 
+  var cfg = readConfigValues(sheet);
+
+  // Older sheets have a single markup_oere. It becomes the supplier markup.
+  if (!('supplier_markup' in cfg)) {
+    if ('markup_oere' in cfg) cfg['supplier_markup'] = cfg['markup_oere'];
+    writeConfigSheet(sheet, cfg);
+  }
+
+  var transmissionFee   = toNumber(cfg['transmission_fee'], 0);
+  var energyTax         = toNumber(cfg['energy_tax'], 0);
+  var supplierMarkup    = toNumber(cfg['supplier_markup'], 0);
+  var associationMarkup = toNumber(cfg['association_markup'], 0);
+  return {
+    TRANSMISSION_FEE:   transmissionFee,
+    ENERGY_TAX:         energyTax,
+    SUPPLIER_MARKUP:    supplierMarkup,
+    ASSOCIATION_MARKUP: associationMarkup,
+    TOTAL_MARKUP:       transmissionFee + energyTax + supplierMarkup + associationMarkup, // öre/kWh excl. VAT
+    VAT_FACTOR:         toNumber(cfg['vat_factor'], 1.25)
+  };
+}
+
+function readConfigValues(sheet) {
   var cfg = {};
   sheet.getDataRange().getValues().forEach(function(row) {
     if (row[0] && row[0] !== 'Inställning') cfg[row[0]] = row[1];
   });
-
-  var transmissionFee = toNumber(cfg['transmission_fee'], 0);
-  var energyTax       = toNumber(cfg['energy_tax'], 0);
-  var markupOere      = toNumber(cfg['markup_oere'], 0);
-  return {
-    TRANSMISSION_FEE: transmissionFee,
-    ENERGY_TAX:       energyTax,
-    MARKUP_OERE:      markupOere,
-    TOTAL_MARKUP:     transmissionFee + energyTax + markupOere, // öre/kWh excl. VAT
-    VAT_FACTOR:       toNumber(cfg['vat_factor'], 1.25)
-  };
+  return cfg;
 }
 
 // Accepts numbers as well as text such as "36,0". An empty cell gives the default,
@@ -32,7 +45,10 @@ function toNumber(value, fallback) {
   return isNaN(n) ? fallback : n;
 }
 
-function writeConfigSheet(sheet) {
+// Writes the settings layout. Values present in `values` are kept, others get defaults.
+function writeConfigSheet(sheet, values) {
+  values = values || {};
+  sheet.getProtections(SpreadsheetApp.ProtectionType.SHEET).forEach(function(p) { p.remove(); });
   sheet.clearContents(); sheet.clearFormats();
   sheet.getRange(1,1,1,3).merge()
     .setValue('Laddboxrapport — Inställningar')
@@ -45,11 +61,14 @@ function writeConfigSheet(sheet) {
     .setFontWeight('bold').setBackground('#EFF6FF').setFontColor('#1E3A8A');
 
   var rows = [
-    ['transmission_fee', 0.0,  'Överföringsavgift i öre/kWh exkl. moms, enligt nätägarens faktura'],
-    ['energy_tax',       36.0, 'Energiskatt i öre/kWh exkl. moms'],
-    ['markup_oere',      0.0,  'Övrigt påslag i öre/kWh exkl. moms'],
-    ['vat_factor',       1.25, '1,25 = 25 % moms  |  1,0 = ingen moms'],
-  ];
+    ['transmission_fee',   0.0,  'Överföringsavgift i öre/kWh exkl. moms, enligt nätägarens faktura'],
+    ['energy_tax',         36.0, 'Energiskatt i öre/kWh exkl. moms'],
+    ['supplier_markup',    0.0,  'Påslag från leverantör i öre/kWh exkl. moms, enligt elhandelsfakturan'],
+    ['association_markup', 0.0,  'Påslag från förening i öre/kWh exkl. moms, som föreningen själv lägger på'],
+    ['vat_factor',         1.25, '1,25 = 25 % moms  |  1,0 = ingen moms'],
+  ].map(function(row) {
+    return row[0] in values && values[row[0]] !== '' ? [row[0], values[row[0]], row[2]] : row;
+  });
   sheet.getRange(4,1,rows.length,3).setValues(rows);
   sheet.getRange(4,1,rows.length,1).setFontFamily('Courier New').setFontSize(10).setFontColor('#374151');
   sheet.getRange(4,2,rows.length,1)

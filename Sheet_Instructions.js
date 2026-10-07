@@ -79,7 +79,7 @@ function buildInstructionsSheet() {
   numbered('1.', 'Hämtar alla avslutade laddningssessioner för föreningens laddboxar från Zaptec, med förbrukning mätt var 15:e minut.');
   numbered('2.', 'Hämtar spotpriset för el i prisområde SE3 för varje kvart. Priserna kommer från Nord Pool. '
     + 'Dagar som är äldre än cirka två månader hämtas från elprisetjustnu.se, eftersom Nord Pool tar betalt för äldre data.');
-  numbered('3.', 'Multiplicerar energin i varje kvart med kvartens spotpris, plus överföringsavgift, energiskatt och eventuellt påslag, och lägger på moms.');
+  numbered('3.', 'Multiplicerar energin i varje kvart med kvartens spotpris, plus överföringsavgift, energiskatt, påslag från leverantör och påslag från förening, och lägger på moms.');
   numbered('4.', 'Summerar kostnaden per lägenhet och skriver rapporterna.');
 
   section('Så här kör du en rapport');
@@ -92,6 +92,8 @@ function buildInstructionsSheet() {
 
   section('Vilka flikar skapas?');
   item('Detaljerad rapport', 'förbrukning och kostnad per lägenhet, med antal sessioner, snittpris och första/senaste laddning. För styrelsens översikt.');
+  paragraph('Längst ner i Detaljerad rapport finns Kontroll mot elräkning: laddad energi och snittpris (spot + påslag från leverantör, exkl. moms). '
+    + 'Jämför med elräkningen. Laddboxarnas förbrukning ska vara mindre än fastighetens, och räkningens snittpris bör ligga nära periodens snittpris.');
   item('Förenklad rapport',  'lägenhetsnummer, kWh och kostnad exkl. moms. Skickas till revisorn för fakturering.');
   item('Sessioner',          'varje enskild laddning med tider, förbrukning, kostnad och eventuell notering. Användbar för att kontrollera en enskild lägenhet.');
   item('Spotpriser',         'alla kvartspriser för perioden och vilken källa varje pris kom från.');
@@ -102,10 +104,11 @@ function buildInstructionsSheet() {
     + 'Varje kvart prissätts ändå med sitt eget spotpris, så timmen i mars får marspris. Ingen laddning räknas dubbelt eller faller bort mellan två rapporter.');
 
   section('Inställningar');
-  paragraph('I fliken Inställningar finns fyra värden som påverkar priset. Alla anges exklusive moms.');
+  paragraph('I fliken Inställningar finns fem värden som påverkar priset. Alla anges exklusive moms.');
   item('transmission_fee', 'överföringsavgift i öre/kWh som nätägaren tar ut av föreningen. Värdet står på nätägarens faktura. Uppdatera om elnätsavtalet ändras.');
   item('energy_tax',       'energiskatt i öre/kWh. Ändras varje år. Uppdatera i januari enligt Skatteverket (länk finns i fliken).');
-  item('markup_oere',      'eventuellt övrigt påslag i öre/kWh.');
+  item('supplier_markup',    'påslag från leverantör i öre/kWh. Står på elhandelsfakturan.');
+  item('association_markup', 'påslag från förening i öre/kWh, som föreningen själv lägger på laddningen. 0 om inget påslag.');
   item('vat_factor',       'momsfaktor. 1,25 betyder 25 % moms.');
   paragraph('Ändringar gäller från nästa rapportkörning.');
 
