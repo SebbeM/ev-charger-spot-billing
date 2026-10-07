@@ -92,7 +92,7 @@ function buildInstructionsSheet() {
 
   section('Vilka flikar skapas?');
   item('Detaljerad rapport', 'förbrukning och kostnad per lägenhet, grupperad per elmätare, med antal sessioner, snittpris och första/senaste laddning. För styrelsens översikt.');
-  paragraph('Laddboxarna kan sitta på flera elmätare. Längst ner i Detaljerad rapport finns Kontroll mot elräkning med en rad per månad och mätare: '
+  paragraph('Laddboxarna kan sitta på flera elmätare. Längst ner i Detaljerad rapport finns Månadsstatistik per elmätare med en rad per månad och mätare: '
     + 'laddad energi och snittpris (spot + påslag från leverantör, exkl. moms). Jämför med elräkningen för samma månad och mätare. '
     + 'Laddboxarnas förbrukning ska vara mindre än mätarens, och räkningens snittpris bör ligga nära periodens snittpris.');
   item('Förenklad rapport',  'lägenhetsnummer, kWh och kostnad exkl. moms. Skickas till revisorn för fakturering.');

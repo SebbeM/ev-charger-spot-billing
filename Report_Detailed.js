@@ -110,7 +110,7 @@ function writeBillCheck(sheet, row, numCols, agg, cfg, spotMap, fromMs, toMs) {
     });
   });
 
-  sheet.getRange(row, 1, 1, numCols).merge().setValue('Kontroll mot elräkning')
+  sheet.getRange(row, 1, 1, numCols).merge().setValue('Månadsstatistik per elmätare')
     .setFontWeight('bold').setBackground(COLOR_HEADER).setFontColor('#FFFFFF').setFontSize(10);
   sheet.getRange(row + 1, 1, 1, 5).setValues([[
     'Månad', 'Mätare', 'Laddad energi (kWh)', 'Snittpris laddning (öre/kWh)', 'Snittpris månaden (öre/kWh)'
