@@ -1,9 +1,8 @@
 // ── Detailed report: one row per apartment ────────────────────────────────────
 
-// periodAvgSpot: plain average of all spot prices in the period, öre/kWh excl. VAT.
-function buildDetailedReport(agg, label, cfg, periodAvgSpot) {
+function buildDetailedReport(agg, label, cfg, spotMap, fromMs, toMs) {
   var sheet = resetSheet(DETAILED_SHEET);
-  var NCOL  = 11;
+  var NCOL  = 12;
 
   writeTitle(sheet, ORG_NAME + ' Laddboxar, förbrukning ' + label, NCOL);
 
@@ -12,7 +11,7 @@ function buildDetailedReport(agg, label, cfg, periodAvgSpot) {
     'Total kWh: ' + agg.totalEnergy.toFixed(2), '',
     'Total kostnad: ' + agg.totalCost.toFixed(2) + ' ' + CURRENCY, '', '',
     'Med notering: ' + agg.flaggedCount, '',
-    'Genererad: ' + generatedAt(), ''
+    'Genererad: ' + generatedAt(), '', ''
   ]]).setBackground(COLOR_SUBTLE).setFontSize(9).setFontColor(COLOR_ENERGY);
 
   writeNote(sheet, 3,
@@ -24,7 +23,7 @@ function buildDetailedReport(agg, label, cfg, periodAvgSpot) {
     NCOL);
 
   writeHeader(sheet, 4, [
-    'Lägenhetsnummer', 'Laddare-ID', 'Sessioner', 'Energi (kWh)', 'Snitt kWh/session', 'Timmar',
+    'Lägenhetsnummer', 'Mätare', 'Laddare-ID', 'Sessioner', 'Energi (kWh)', 'Snitt kWh/session', 'Timmar',
     'Kostnad (' + CURRENCY + ')', 'Snittpris (öre/kWh)', 'Ej prissatt (kWh)', 'Första session', 'Senaste session'
   ]);
 
@@ -34,6 +33,7 @@ function buildDetailedReport(agg, label, cfg, periodAvgSpot) {
     if (r.unpricedKwh > 0.0005) flagged[i] = true;
     return [
       r.name,
+      r.meter,
       r.id,
       r.sessions.length,
       round(r.energy, 3),
@@ -49,52 +49,93 @@ function buildDetailedReport(agg, label, cfg, periodAvgSpot) {
 
   // Keep first/last session as plain text so Sheets does not parse some of
   // them into dates and leave others as strings.
-  if (rows.length) sheet.getRange(5, 10, rows.length, 2).setNumberFormat('@');
+  if (rows.length) sheet.getRange(5, 11, rows.length, 2).setNumberFormat('@');
   writeRows(sheet, 5, rows, 10, flagged);
   if (rows.length) {
-    sheet.getRange(5, 4, rows.length, 1).setFontWeight('bold').setFontColor(COLOR_ENERGY);
-    sheet.getRange(5, 7, rows.length, 1).setFontWeight('bold').setFontColor(COLOR_COST);
+    sheet.getRange(5, 5, rows.length, 1).setFontWeight('bold').setFontColor(COLOR_ENERGY);
+    sheet.getRange(5, 8, rows.length, 1).setFontWeight('bold').setFontColor(COLOR_COST);
   }
 
-  writeTotals(sheet, rows.length + 5, NCOL, [3, 4, 6, 7, 9], 5);
+  writeTotals(sheet, rows.length + 5, NCOL, [4, 5, 7, 8, 10], 5);
 
   // Explicit number formats for data and totals rows; otherwise Sheets may
   // infer a date format (0 shows as 1899-12-30).
-  var formats = { 3: '0', 4: '0.000', 5: '0.000', 6: '0.0', 7: '0.00', 8: '0.0', 9: '0.000' };
+  var formats = { 4: '0', 5: '0.000', 6: '0.000', 7: '0.0', 8: '0.00', 9: '0.0', 10: '0.000' };
   Object.keys(formats).forEach(function(col) {
     sheet.getRange(5, Number(col), rows.length + 1, 1).setNumberFormat(formats[col]);
   });
-  writeBillCheck(sheet, rows.length + 7, NCOL, agg, cfg, periodAvgSpot);
-  setColumnWidths(sheet, [150, 260, 80, 100, 120, 70, 110, 120, 110, 140, 140]);
+  writeBillCheck(sheet, rows.length + 7, NCOL, agg, cfg, spotMap, fromMs, toMs);
+  setColumnWidths(sheet, [150, 90, 260, 80, 100, 120, 70, 110, 120, 110, 140, 140]);
 }
 
-// Figures to compare with the electricity bill, which covers the whole building
-// and states consumption and an average price for spot + supplier markup.
-function writeBillCheck(sheet, row, numCols, agg, cfg, periodAvgSpot) {
-  var withMarkup = function(spot) { return spot == null ? '' : round(spot + cfg.SUPPLIER_MARKUP, 1); };
+// Figures to compare with the monthly electricity bills: one row per calendar
+// month and meter. Each bill states the meter's consumption and an average
+// price for spot + supplier markup.
+function writeBillCheck(sheet, row, numCols, agg, cfg, spotMap, fromMs, toMs) {
+  var months = stockholmMonths(fromMs, toMs);
+  var meters = agg.meters.map(function(m) { return m.name; });
+
+  // kWh per month and meter, counted by the quarter the energy was used in.
+  // Sessions are attributed to the month they ended, but the bill is not.
+  var cells = {};
+  agg.sessions.forEach(function(s) {
+    var meter = meterName(s);
+    s.cost.quarters.forEach(function(q) {
+      for (var i = 0; i < months.length; i++) {
+        if (q.key < months[i].from || q.key >= months[i].to) continue;
+        var key = i + '|' + meter;
+        var c = cells[key] || (cells[key] = { kwh: 0, pricedKwh: 0, spotKwh: 0 });
+        c.kwh += q.kwh;
+        if (q.spot != null) { c.pricedKwh += q.kwh; c.spotKwh += q.kwh * q.spot; }
+        return;
+      }
+    });
+  });
+
   // The bill shows the supplier's price, so the association's own markup is left out.
-  var markup = ' + påslag från leverantör ' + cfg.SUPPLIER_MARKUP + ' öre/kWh';
-  var lines = [
-    ['Laddad energi (kWh)', round(agg.totalEnergy, 3), '0.000',
-     'Laddboxarnas del av fastighetens förbrukning. Ska vara mindre än förbrukningen på elräkningen.'],
-    ['Snittpris laddning (öre/kWh exkl. moms)', withMarkup(agg.avgSpot), '0.0',
-     'Spotpris viktat efter när laddboxarna laddade' + markup + '. Lägre än periodens snitt om laddningen sker på billiga timmar.'],
-    ['Snittpris perioden (öre/kWh exkl. moms)', withMarkup(periodAvgSpot), '0.0',
-     'Medel av alla kvartspriser i perioden' + markup + '. Snittpriset på elräkningen bör ligga nära detta.']
-  ];
+  var withMarkup = function(spot) { return spot == null ? '' : round(spot + cfg.SUPPLIER_MARKUP, 1); };
+  var rows = [], backgrounds = [];
+  months.forEach(function(month, i) {
+    var monthAvg = withMarkup(averageSpotPrice(spotMap, month.from, month.to));
+    meters.forEach(function(meter) {
+      var c = cells[i + '|' + meter] || { kwh: 0, pricedKwh: 0, spotKwh: 0 };
+      rows.push([
+        month.label + (month.partial ? ' (del av månad)' : ''),
+        meter,
+        round(c.kwh, 3),
+        c.pricedKwh > 0 ? withMarkup(c.spotKwh / c.pricedKwh) : '',
+        monthAvg
+      ]);
+      backgrounds.push(i % 2 === 0 ? '#FFFFFF' : COLOR_ROW_ALT);
+    });
+  });
 
   sheet.getRange(row, 1, 1, numCols).merge().setValue('Kontroll mot elräkning')
     .setFontWeight('bold').setBackground(COLOR_HEADER).setFontColor('#FFFFFF').setFontSize(10);
-  lines.forEach(function(line, i) {
-    var r = row + 1 + i;
-    sheet.getRange(r, 1, 1, 3).merge().setValue(line[0]).setFontWeight('bold');
-    sheet.getRange(r, 4).setValue(line[1]).setNumberFormat(line[2]).setFontWeight('bold').setFontColor(COLOR_ENERGY);
-    sheet.getRange(r, 5, 1, numCols - 4).merge().setValue(line[3]).setFontColor('#6B7280').setWrap(true);
-    sheet.getRange(r, 1, 1, numCols).setFontSize(9).setBackground(i % 2 === 0 ? '#FFFFFF' : COLOR_ROW_ALT);
-  });
-  writeNote(sheet, row + 1 + lines.length,
-    'Elräkningen gäller kalendermånad, medan rapporten tar med laddningar som avslutades under perioden. Små avvikelser vid månadsskiftet är därför normala.',
+  sheet.getRange(row + 1, 1, 1, 5).setValues([[
+    'Månad', 'Mätare', 'Laddad energi (kWh)', 'Snittpris laddning (öre/kWh)', 'Snittpris månaden (öre/kWh)'
+  ]]).setFontWeight('bold').setBackground(COLOR_SUBTLE).setFontColor(COLOR_ENERGY).setFontSize(9).setWrap(true);
+
+  var first = row + 2;
+  if (rows.length) {
+    // Plain text, or Sheets parses "september 2026" (an English month name) as a date
+    sheet.getRange(first, 1, rows.length, 1).setNumberFormat('@');
+    var range = sheet.getRange(first, 1, rows.length, 5).setValues(rows).setFontSize(9);
+    range.setBackgrounds(backgrounds.map(function(b) { return [b, b, b, b, b]; }));
+    sheet.getRange(first, 3, rows.length, 1).setNumberFormat('0.000');
+    sheet.getRange(first, 4, rows.length, 2).setNumberFormat('0.0');
+    sheet.getRange(first, 3, rows.length, 3).setFontWeight('bold').setFontColor(COLOR_ENERGY);
+  }
+
+  writeNote(sheet, first + rows.length,
+    'Jämför varje rad med elräkningen för samma månad och mätare. Priserna är spotpris + påslag från leverantör '
+    + cfg.SUPPLIER_MARKUP + ' öre/kWh, exkl. moms.\n'
+    + 'Laddad energi: laddboxarnas del av mätarens förbrukning, räknad per kvart till den månad då den förbrukades. '
+    + 'Ska vara mindre än förbrukningen på elräkningen. Laddningar som pågick vid periodens slut saknas i den sista månaden.\n'
+    + 'Snittpris laddning: spotpris viktat efter när laddboxarna laddade. Lägre än månadens snitt om laddningen sker på billiga timmar.\n'
+    + 'Snittpris månaden: medel av alla kvartspriser i månaden. Snittpriset på elräkningen bör ligga nära detta.',
     numCols);
+  sheet.setRowHeight(first + rows.length, 70);
 }
 
 function round(n, decimals) {

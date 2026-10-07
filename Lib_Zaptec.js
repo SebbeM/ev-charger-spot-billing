@@ -92,8 +92,16 @@ function normalizeSession(raw) {
   };
 }
 
+var UNKNOWN_METER = 'Okänd mätare';
+
 function apartmentName(session) {
-  return CHARGER_NAMES[session.chargerId] || session.deviceName || session.chargerId;
+  var info = CHARGER_NAMES[session.chargerId];
+  return (info && info.name) || session.deviceName || session.chargerId;
+}
+
+function meterName(session) {
+  var info = CHARGER_NAMES[session.chargerId];
+  return (info && info.meter) || UNKNOWN_METER;
 }
 
 function durationMs(session) {
@@ -139,8 +147,7 @@ function buildIntervals(session) {
 // Each interval's energy is distributed over the quarters it overlaps, in
 // proportion to the overlap. An interval's energy was consumed BEFORE its end
 // timestamp, so it is never assigned to the quarter after the reading.
-// Returns {cost, pricedKwh, unpricedKwh, spotKwhOere, avgPrice, quarters:[...], notes:[...]}.
-// spotKwhOere is Σ kWh × spot over priced quarters, for consumption-weighted averages.
+// Returns {cost, pricedKwh, unpricedKwh, avgPrice, quarters:[...], notes:[...]}.
 function priceSession(session, spotMap, cfg) {
   var notes     = [];
   var alloc     = {};   // quarterKey → kWh
@@ -179,7 +186,7 @@ function priceSession(session, spotMap, cfg) {
     notes.push(session.reliableClock ? 'Registrerad offline' : 'Registrerad offline, osäker klocka');
   }
 
-  var cost = 0, pricedKwh = 0, unpricedKwh = 0, spotKwhOere = 0, quarters = [];
+  var cost = 0, pricedKwh = 0, unpricedKwh = 0, quarters = [];
   Object.keys(alloc).map(Number).sort(function(a, b) { return a - b; }).forEach(function(q) {
     var kwh  = alloc[q] * factor;
     var spot = lookupSpotPrice(q, spotMap);
@@ -191,7 +198,6 @@ function priceSession(session, spotMap, cfg) {
       row.cost   = kwh * row.price / 100;                       // SEK
       cost      += row.cost;
       pricedKwh += kwh;
-      spotKwhOere += kwh * spot;
     }
     quarters.push(row);
   });
@@ -204,17 +210,16 @@ function priceSession(session, spotMap, cfg) {
     cost:        cost,
     pricedKwh:   pricedKwh,
     unpricedKwh: unpricedKwh,
-    spotKwhOere: spotKwhOere,
     avgPrice:    pricedKwh > 0 ? cost / pricedKwh * 100 : null,
     quarters:    quarters,
     notes:       notes
   };
 }
 
-// Prices all sessions and groups them per charger.
+// Prices all sessions and groups them per charger and per meter.
 function aggregateSessions(sessions, spotMap, cfg) {
-  var byCharger = {};
-  var totals = { energy: 0, cost: 0, pricedKwh: 0, unpricedKwh: 0, spotKwhOere: 0, flagged: 0 };
+  var byCharger = {}, byMeter = {};
+  var totals = { energy: 0, cost: 0, unpricedKwh: 0, flagged: 0 };
 
   sessions.forEach(function(s) {
     var p  = priceSession(s, spotMap, cfg);
@@ -223,7 +228,7 @@ function aggregateSessions(sessions, spotMap, cfg) {
     var c = byCharger[s.chargerId];
     if (!c) {
       c = byCharger[s.chargerId] = {
-        id: s.chargerId, name: apartmentName(s), sessions: [],
+        id: s.chargerId, name: apartmentName(s), meter: meterName(s), sessions: [],
         energy: 0, duration: 0, cost: 0, pricedKwh: 0, unpricedKwh: 0
       };
     }
@@ -234,24 +239,27 @@ function aggregateSessions(sessions, spotMap, cfg) {
     c.pricedKwh   += p.pricedKwh;
     c.unpricedKwh += p.unpricedKwh;
 
+    var m = byMeter[c.meter];
+    if (!m) m = byMeter[c.meter] = { name: c.meter, energy: 0 };
+    m.energy += s.energy;
+
     totals.energy      += s.energy;
     totals.cost        += p.cost;
-    totals.pricedKwh   += p.pricedKwh;
     totals.unpricedKwh += p.unpricedKwh;
-    totals.spotKwhOere += p.spotKwhOere;
     if (p.notes.length) totals.flagged++;
   });
 
   return {
+    // Grouped by meter, highest energy first within each meter
     rows:         Object.keys(byCharger).map(function(k) { return byCharger[k]; })
-                    .sort(function(a, b) { return b.energy - a.energy; }),
+                    .sort(function(a, b) { return a.meter.localeCompare(b.meter, 'sv') || b.energy - a.energy; }),
+    meters:       Object.keys(byMeter).sort(function(a, b) { return a.localeCompare(b, 'sv'); })
+                    .map(function(k) { return byMeter[k]; }),
     sessions:     sessions.slice().sort(function(a, b) { return a.start - b.start; }),
     sessionCount: sessions.length,
     totalEnergy:  totals.energy,
     totalCost:    totals.cost,
     unpricedKwh:  totals.unpricedKwh,
-    // Spot price weighted by charged kWh, öre/kWh excl. VAT and fees
-    avgSpot:      totals.pricedKwh > 0 ? totals.spotKwhOere / totals.pricedKwh : null,
     flaggedCount: totals.flagged
   };
 }

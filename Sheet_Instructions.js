@@ -91,9 +91,10 @@ function buildInstructionsSheet() {
   paragraph('Tips: kör månadsrapporten några dagar in i den nya månaden. Laddboxar som tillfälligt varit offline hinner då skicka in sina sessioner.');
 
   section('Vilka flikar skapas?');
-  item('Detaljerad rapport', 'förbrukning och kostnad per lägenhet, med antal sessioner, snittpris och första/senaste laddning. För styrelsens översikt.');
-  paragraph('Längst ner i Detaljerad rapport finns Kontroll mot elräkning: laddad energi och snittpris (spot + påslag från leverantör, exkl. moms). '
-    + 'Jämför med elräkningen. Laddboxarnas förbrukning ska vara mindre än fastighetens, och räkningens snittpris bör ligga nära periodens snittpris.');
+  item('Detaljerad rapport', 'förbrukning och kostnad per lägenhet, grupperad per elmätare, med antal sessioner, snittpris och första/senaste laddning. För styrelsens översikt.');
+  paragraph('Laddboxarna kan sitta på flera elmätare. Längst ner i Detaljerad rapport finns Kontroll mot elräkning med en rad per månad och mätare: '
+    + 'laddad energi och snittpris (spot + påslag från leverantör, exkl. moms). Jämför med elräkningen för samma månad och mätare. '
+    + 'Laddboxarnas förbrukning ska vara mindre än mätarens, och räkningens snittpris bör ligga nära periodens snittpris.');
   item('Förenklad rapport',  'lägenhetsnummer, kWh och kostnad exkl. moms. Skickas till revisorn för fakturering.');
   item('Sessioner',          'varje enskild laddning med tider, förbrukning, kostnad och eventuell notering. Användbar för att kontrollera en enskild lägenhet.');
   item('Spotpriser',         'alla kvartspriser för perioden och vilken källa varje pris kom från.');

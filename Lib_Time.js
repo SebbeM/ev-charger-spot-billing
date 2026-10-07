@@ -50,6 +50,24 @@ function monthLabel(date) {
   return SWEDISH_MONTHS[Number(formatLocal(date, 'M')) - 1] + ' ' + formatLocal(date, 'yyyy');
 }
 
+// Stockholm calendar months overlapping [fromMs, toMs), clipped to that range.
+// Returns [{label, from, to, partial}], where partial means the month was clipped.
+function stockholmMonths(fromMs, toMs) {
+  var months = [];
+  var year   = Number(formatLocal(fromMs, 'yyyy'));
+  var month  = Number(formatLocal(fromMs, 'M')) - 1;
+  for (var start = monthStart(year, month).getTime(); start < toMs; start = monthStart(year, ++month).getTime()) {
+    var end = monthStart(year, month + 1).getTime();
+    months.push({
+      label:   monthLabel(start),
+      from:    Math.max(start, fromMs),
+      to:      Math.min(end, toMs),
+      partial: start < fromMs || end > toMs
+    });
+  }
+  return months;
+}
+
 // UTC milliseconds for 00:00 Stockholm time on a 'yyyy-MM-dd' date.
 function stockholmMidnight(dateStr) {
   var p     = dateStr.split('-');

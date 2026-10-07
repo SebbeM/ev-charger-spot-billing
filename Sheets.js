@@ -17,7 +17,7 @@ function buildSheets(token, fromMs, toMs, label) {
 
   var agg = aggregateSessions(sessions, prices.spotMap, cfg);
 
-  buildDetailedReport(agg, label, cfg, averageSpotPrice(prices.spotMap, fromMs, toMs));
+  buildDetailedReport(agg, label, cfg, prices.spotMap, fromMs, toMs);
   buildSimplifiedReport(agg, label, cfg);
   buildSessionsSheet(agg, label, cfg);
   buildSpotPricesSheet(prices, fromMs, toMs, label, cfg);
@@ -34,6 +34,7 @@ function summaryMessage(agg, prices, label) {
     '',
     agg.sessionCount + ' sessioner, ' + prices.count + ' kvartspriser.',
     agg.totalEnergy.toFixed(2) + ' kWh  →  ' + agg.totalCost.toFixed(2) + ' ' + CURRENCY + ' inkl. moms.',
+    agg.meters.map(function(m) { return m.name + ': ' + m.energy.toFixed(2) + ' kWh'; }).join(', ') + '.',
     priceSourceSummary(prices)
   ];
 
